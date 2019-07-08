@@ -67,10 +67,17 @@ class GenesisDevice {
    */
   addProvider(name, definition, comment) {
     const {providers} = this;
-    if (name in providers) {
-      throw new Error(`Already added a provider resource called "${name}".`);
+
+    // Providers are seen as unique in Terraform if they have an alias.
+    let uniqueName = name;
+    if ( 'alias' in definition ) {
+      uniqueName += '.' + definition.alias;
     }
-    providers[name] = {
+
+    if (uniqueName in providers) {
+      throw new Error(`Already added a provider resource called "${uniqueName}".`);
+    }
+    providers[uniqueName] = {
       name,
       definition,
       comment,
@@ -140,12 +147,23 @@ class GenesisDevice {
   toString() {
     return filter([
       this.outputHeader,
+      this.renderLocals(),
       this.renderProviders(),
       this.renderVariables(),
       this.renderData(),
       this.renderResources(),
       this.renderOutputs(),
     ]).join('\n');
+  }
+
+  /**
+   * Renders local variables.
+   * @private
+   * @return {string} Rendered representation of locals.
+   */
+  renderLocals() {
+    const {locals} = this;
+    return this.baseRenderHash('locals', locals);
   }
 
   /**
@@ -165,7 +183,15 @@ class GenesisDevice {
    */
   renderProviders() {
     const {providers} = this;
-    return this.baseRenderUntyped('provider', providers);
+
+    // Render one provider at a time so it can handle non-unique keys if they exist.
+    const order = orderBy(keys(providers));
+    return map(order, (key) => {
+      const keyBits = key.split('.');
+      const renderObj = {};
+      renderObj[keyBits[0]] = providers[key];
+      return this.baseRenderUntyped('provider', renderObj);
+    }).join('\n');
   }
 
   /**
@@ -176,6 +202,17 @@ class GenesisDevice {
   renderOutputs() {
     const {outputs} = this;
     return this.baseRenderUntyped('output', outputs);
+  }
+
+  /**
+   * Renders hash-like structures, like locals.
+   * @private
+   * @param {string} sectionType
+   * @param {object} valueMap
+   * @return {string} Rendered representation.
+   */
+  baseRenderHash(sectionType, valueMap) {
+    return `${sectionType} {\n${renderDefinition(valueMap, 2)}\n}\n`
   }
 
   /**
