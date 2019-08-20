@@ -16,6 +16,7 @@ class GenesisDevice {
     this.providers = {};
     this.data = {};
     this.outputs = {};
+    this.backends = {};
     this.locals = {};
     this.outputHeader = outputHeader || '';
   }
@@ -141,6 +142,24 @@ class GenesisDevice {
   }
 
   /**
+   * Add a backend to the source tree.
+   * @param {string} name Name of localresource.
+   * @param {object} definition Localresource definition fields.
+   * @param {?string} comment Optional comment to add to generated code.
+   */
+  addBackend(name, definition, comment) {
+    const {backends} = this;
+    if (name in backends) {
+      throw new Error(`Already added a backend called "${name}".`);
+    }
+    backends[name] = {
+      definition,
+      name,
+      comment,
+    };
+  }
+
+  /**
    * Terraform generation function.
    * @return {string} Terraform source generated from internal representation.
    */
@@ -148,6 +167,7 @@ class GenesisDevice {
     return filter([
       this.outputHeader,
       this.renderLocals(),
+      this.renderTerraform(),
       this.renderProviders(),
       this.renderVariables(),
       this.renderData(),
@@ -205,6 +225,17 @@ class GenesisDevice {
   }
 
   /**
+   * Renders terraform block.
+   * @private
+   * @return {string} Rendered representation of terraform block.
+   */
+  renderTerraform() {
+    const {backends} = this;
+    const renderedBackends = this.baseRenderUntyped('backend', backends);
+    return `terraform {\n${renderedBackends}\n}\n`;
+  }
+
+  /**
    * Renders hash-like structures, like locals.
    * @private
    * @param {string} sectionType
@@ -212,7 +243,9 @@ class GenesisDevice {
    * @return {string} Rendered representation.
    */
   baseRenderHash(sectionType, valueMap) {
-    return `${sectionType} {\n${renderDefinition(valueMap, 2)}\n}\n`
+    if ( Object.keys(valueMap).length > 0 ) {
+      return `${sectionType} {\n${renderDefinition(valueMap, 2)}\n}\n`;
+    }
   }
 
   /**
